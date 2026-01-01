@@ -18,15 +18,15 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                if !viewModel.isConnected {
-                    setupView
-                } else {
+            setupView
+                .navigationDestination(isPresented: $viewModel.isConnected) {
                     telemetryView
+                        .navigationBarBackButtonHidden(false)
+                        .toolbar {
+                            // This ensures the native back button works as expected
+                            // and the clock is visible in the status bar.
+                        }
                 }
-            }
         }
     }
 
@@ -47,7 +47,7 @@ struct ContentView: View {
                         .font(.system(size: h * 0.1, weight: .black, design: .monospaced))
                     
                     Text(viewModel.ipAddress)
-                        .font(.system(size: h * 0.05, weight: .medium, design: .monospaced))
+                        .font(.system(size: h * 0.07, weight: .medium, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
                 
@@ -72,151 +72,124 @@ struct ContentView: View {
             let w = geo.size.width
             let h = geo.size.height
             
-            VStack(spacing: 0) {
-                // 1. Top: Gradient RPM Bar
-                rpmBar
-                    .frame(height: h * 0.05)
-                    .padding(.top, h * 0.05)
-                    .padding(.horizontal, w * 0.05)
+            ZStack {
+                // Background Gradient
+                RadialGradient(
+                    colors: [Color(red: 0, green: 0.26, blue: 0.93), .black], // #0043ED to Black
+                    center: .bottom,
+                    startRadius: 0,
+                    endRadius: h * 1.3
+                )
+                .ignoresSafeArea()
 
-                Spacer(minLength: 0)
-
-                // 2. Center: Gear & Speed
-                VStack(spacing: -h * 0.04) {
-                    Text(viewModel.gear == 0 ? "N" : viewModel.gear == -1 ? "R" : "\(viewModel.gear)")
-                        .font(.system(size: h * 0.45, weight: .black, design: .rounded))
-                        .fontDesign(.monospaced)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 2)
+                VStack(spacing: 0) {
+                    // MAIN CLUSTER (Arc + Gear)
+                    // MAIN CLUSTER (Arc + Gear)
+                    ZStack {
+                        // 1. RPM Arc - Positioned at the top
+                        ZStack {
+                            // Background Track
+                            Circle()
+                                .trim(from: 0.6, to: 0.9)
+                                .stroke(Color.white.opacity(0.12), style: StrokeStyle(lineWidth: h * 0.08, lineCap: .round))
+                                .rotationEffect(.degrees(0))
+                            
+                            // Active Arc
+                            let rpmPercent = Double(viewModel.rpm) / Double(max(1, viewModel.maxRPM))
+                            Circle()
+                                .trim(from: 0.6, to: 0.6 + (0.3 * CGFloat(min(max(rpmPercent, 0), 1.0))))
+                                .stroke(
+                                    AngularGradient(
+                                        colors: [.green, .yellow, .orange, .red, Color(red: 0.8, green: 0, blue: 0.8), .purple],
+                                        center: .center,
+                                        startAngle: .degrees(180),
+                                        endAngle: .degrees(360)
+                                    ),
+                                    style: StrokeStyle(lineWidth: h * 0.08, lineCap: .round)
+                                )
+                                .rotationEffect(.degrees(0))
+                                .animation(.linear(duration: 0.1), value: rpmPercent)
+                        }
+                        .frame(width: w * 0.9, height: w * 0.9)
+                        .offset(y: h * 0.3) // Push down to frame the top edge nicely
+                        
+                        // 2. Central Gear & Speed - Centered in the top half
+                        VStack(spacing: -h * 0.08) {
+                            Text(viewModel.gear == 0 ? "N" : viewModel.gear == -1 ? "R" : "\(viewModel.gear)")
+                                .font(.orbitron(size: h * 0.4, weight: 900))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.5), radius: 2)
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: w * 0.02) {
+                                Text("\(viewModel.speed)")
+                                    .font(.orbitron(size: h * 0.14, weight: 700))
+                                Text("KPH")
+                                    .font(.orbitron(size: h * 0.12, weight: 700))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                        }
+                        .offset(y: h * 0.08) // Align with the arc's center
+                    }
+                    .frame(height: h * 0.55) // Occupy clear top space
                     
-                    HStack(alignment: .firstTextBaseline, spacing: w * 0.01) {
-                        Text("\(viewModel.speed)")
-                            .font(.system(size: h * 0.18, weight: .bold, design: .monospaced))
-                        Text("KM/H")
-                            .font(.system(size: h * 0.06, weight: .bold, design: .monospaced))
-                            .foregroundColor(.gray)
-                    }
-                }
+                    Spacer(minLength: 0)
 
-                Spacer(minLength: 0)
-
-                // 3. Bottom Grid: Pos | Laps | Tyre
-                HStack(spacing: 0) {
-                    // Position
-                    VStack(spacing: h * 0.01) {
-                        Text("POS")
-                            .font(.system(size: h * 0.05, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 0) {
-                            Text("\(viewModel.position)")
-                                .font(.system(size: h * 0.1, weight: .black, design: .monospaced))
-                            Text("/\(viewModel.totalCars)")
-                                .font(.system(size: h * 0.07, weight: .bold, design: .monospaced))
-                                .foregroundColor(.gray)
+                    // 3. BOTTOM DATA GRID
+                    VStack(spacing: h * 0.02) {
+                        HStack(alignment: .center) {
+                            // Position
+                            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                Text("P")
+                                    .font(.orbitron(size: h * 0.11, weight: 700))
+                                    .foregroundColor(.white)
+                                Text("\(viewModel.position)")
+                                    .font(.orbitron(size: h * 0.11, weight: 900))
+                                Text("/\(viewModel.totalCars)")
+                                    .font(.orbitron(size: h * 0.11, weight: 400))
+                                    .foregroundColor(.gray.opacity(0.6))
+                            }
+                            
+                            Spacer()
+                            
+                            // Tyre Image from Assets
+                            Image("tyre_\(viewModel.tyreCompound)")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: h * 0.24, height: h * 0.24)
                         }
-                    }
-                    .frame(maxWidth: .infinity)
+                        .padding(.horizontal, w * 0.1)
 
-                    // Divider
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 1, height: h * 0.12)
-
-                    // Laps
-                    VStack(spacing: h * 0.01) {
-                        Text("LAP")
-                            .font(.system(size: h * 0.05, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 0) {
-                            Text("\(viewModel.currentLap)")
-                                .font(.system(size: h * 0.1, weight: .black, design: .monospaced))
-                            Text("/\(viewModel.totalLaps)")
-                                .font(.system(size: h * 0.07, weight: .bold, design: .monospaced))
-                                .foregroundColor(.gray)
+                        // Lap Time & Count
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(viewModel.currentLapTime)
+                                .font(.orbitron(size: h * 0.11, weight: 700))
+                                .foregroundColor(.white)
+                            
+                            Spacer()
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                                Text("LAP")
+                                    .font(.orbitron(size: h * 0.11, weight: 400))
+                                    .foregroundColor(.white.opacity(0.4))
+                                Text("\(viewModel.currentLap)")
+                                    .font(.orbitron(size: h * 0.11, weight: 900))
+                            }
                         }
+                        .padding(.horizontal, w * 0.1)
                     }
-                    .frame(maxWidth: .infinity)
-
-                    // Divider
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 1, height: h * 0.12)
-                        
-                    // Tyre
-                     VStack(spacing: h * 0.01) {
-                        Text("TYRE")
-                            .font(.system(size: h * 0.05, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        
-                        Text(viewModel.tyreCompound)
-                            .font(.system(size: h * 0.08, weight: .black, design: .monospaced))
-                            .foregroundColor(tyreColor)
-                            .padding(h * 0.02)
-                            .background(
-                                Circle()
-                                    .stroke(tyreColor, lineWidth: 2)
-                            )
-                    }
-                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, -h * 0.1)
                 }
-                .padding(.vertical, h * 0.03)
-                .background(
-                    RoundedRectangle(cornerRadius: h * 0.06)
-                        .fill(Color(white: 0.12))
-                )
-                .padding(.horizontal, w * 0.02)
-                
-                // 4. Extra: Current Lap Time
-                HStack {
-                    Text("LAP TIME")
-                        .font(.system(size: h * 0.05, weight: .bold, design: .monospaced))
-                        .foregroundColor(.gray)
-                    Spacer()
-                    Text(viewModel.currentLapTime)
-                        .font(.system(size: h * 0.07, weight: .black, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, w * 0.06)
-                .padding(.vertical, h * 0.02)
-                .background(
-                    Capsule()
-                        .fill(Color(white: 0.08))
-                )
-                .padding(.horizontal, w * 0.02)
-                .padding(.bottom, h * 0.03)
             }
         }
-        .onLongPressGesture {
+        .onDisappear {
+            // Stop UDP when navigating back (e.g. swipe back or button)
             viewModel.stop()
         }
     }
 
-    private var rpmBar: some View {
-         GeometryReader { geo in
-            let rpmPercent = Double(viewModel.rpm) / Double(viewModel.maxRPM)
-            ZStack(alignment: .leading) {
-                // Background Track
-                Capsule()
-                    .fill(Color(white: 0.2))
-                
-                // Active Gradient Bar
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.green, .red, .purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: geo.size.width * CGFloat(min(max(rpmPercent, 0), 1.0)))
-                    .animation(.linear(duration: 0.1), value: rpmPercent) // Smooth update
-            }
-         }
-    }
-
     private var tyreColor: Color {
         switch viewModel.tyreCompound {
-        case "S": return .red
+        case "S": return Color(red: 1, green: 0.1, blue: 0.1)
         case "M": return Color.yellow
         case "H": return Color.white
         case "I": return Color.green

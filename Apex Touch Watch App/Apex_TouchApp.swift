@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct Apex_Touch_Watch_AppApp: App {
+    init() {
+        CustomFont.register()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
