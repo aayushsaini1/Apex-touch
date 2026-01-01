@@ -10,6 +10,7 @@ class TelemetryViewModel: ObservableObject {
     @Published var currentLap: UInt8 = 0
     @Published var lastLapTime: String = "0:00.000"
     @Published var tyreCompound: String = "Unknown"
+    @Published var maxRPM: UInt16 = 12000 // Default for F1
 
     @Published var isConnected = false
     @Published var packetsReceived = 0
@@ -91,6 +92,9 @@ class TelemetryViewModel: ObservableObject {
     private func updateCarStatus(_ data: CarStatusData) {
         DispatchQueue.main.async {
             self.tyreCompound = self.mapTyreCompound(data.visualTyreCompound)
+            if data.maxRPM > 0 {
+                self.maxRPM = data.maxRPM
+            }
         }
     }
 
