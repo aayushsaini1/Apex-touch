@@ -4,8 +4,11 @@ extension Data {
     func scanValue<T>(at offset: Int) -> T {
         let size = MemoryLayout<T>.size
         guard offset + size <= self.count else {
-            // Return a default value rather than crashing if packet is malformed
-            return UnsafeMutablePointer<T>.allocate(capacity: 1).pointee
+            // Return zero-initialized memory instead of garbage
+            var zeroValue = UnsafeMutablePointer<T>.allocate(capacity: 1)
+            defer { zeroValue.deallocate() }
+            let zeroData = Data(count: size)
+            return zeroData.withUnsafeBytes { $0.loadUnaligned(as: T.self) }
         }
         return self.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset, as: T.self) }
     }
@@ -67,42 +70,42 @@ extension Data {
     }
 
     func parseLapData(playerIndex: Int) -> LapData {
-        let entrySize = 113
+        let entrySize = 113 // F1 24/25 standard entry size
         let offset = 29 + (playerIndex * entrySize)
 
         return LapData(
-            lastLapTimeInMS: scanValue(at: offset),
-            currentLapTimeInMS: scanValue(at: offset + 4),
-            sector1TimeInMS: scanValue(at: offset + 8),
-            sector2TimeInMS: scanValue(at: offset + 10),
-            deltaToCarInFrontInMS: scanValue(at: offset + 12),
-            deltaToRaceLeaderInMS: scanValue(at: offset + 14),
-            lapDistance: scanValue(at: offset + 16),
-            totalDistance: scanValue(at: offset + 20),
-            safetyCarDelta: scanValue(at: offset + 24),
-            carPosition: scanValue(at: offset + 28),
-            currentLapNum: scanValue(at: offset + 29),
-            pitStatus: scanValue(at: offset + 30),
-            numPitStops: scanValue(at: offset + 31),
-            sector: scanValue(at: offset + 32),
-            currentLapInvalid: scanValue(at: offset + 33),
-            penalties: scanValue(at: offset + 34),
-            totalWarnings: scanValue(at: offset + 35),
-            cornerCuttingWarnings: scanValue(at: offset + 36),
-            numUnservedDriveThroughPens: scanValue(at: offset + 37),
-            numUnservedStopGoPens: scanValue(at: offset + 38),
-            gridPosition: scanValue(at: offset + 39),
-            driverStatus: scanValue(at: offset + 40),
-            resultStatus: scanValue(at: offset + 41),
-            pitLaneTimerActive: scanValue(at: offset + 42),
-            pitLaneTimeInLaneInMS: scanValue(at: offset + 43),
-            pitStopTimerInMS: scanValue(at: offset + 45),
-            pitStopShouldServePen: scanValue(at: offset + 47)
+            lastLapTimeInMS: scanValue(at: offset),         // 0
+            currentLapTimeInMS: scanValue(at: offset + 8),  // 8
+            sector1TimeInMS: scanValue(at: offset + 16),
+            sector2TimeInMS: scanValue(at: offset + 19),
+            deltaToCarInFrontInMS: scanValue(at: offset + 22),
+            deltaToRaceLeaderInMS: scanValue(at: offset + 24),
+            lapDistance: scanValue(at: offset + 26),
+            totalDistance: scanValue(at: offset + 30),
+            safetyCarDelta: scanValue(at: offset + 34),
+            carPosition: scanValue(at: offset + 38),        // Standard F1 24/25 POS Offset
+            currentLapNum: scanValue(at: offset + 39),      // Standard F1 24/25 LAP Offset
+            pitStatus: scanValue(at: offset + 40),
+            numPitStops: scanValue(at: offset + 41),
+            sector: scanValue(at: offset + 42),
+            currentLapInvalid: scanValue(at: offset + 43),
+            penalties: scanValue(at: offset + 44),
+            totalWarnings: scanValue(at: offset + 45),
+            cornerCuttingWarnings: scanValue(at: offset + 46),
+            numUnservedDriveThroughPens: scanValue(at: offset + 47),
+            numUnservedStopGoPens: scanValue(at: offset + 48),
+            gridPosition: scanValue(at: offset + 49),
+            driverStatus: scanValue(at: offset + 50),
+            resultStatus: scanValue(at: offset + 51),
+            pitLaneTimerActive: scanValue(at: offset + 52),
+            pitLaneTimeInLaneInMS: scanValue(at: offset + 53),
+            pitStopTimerInMS: scanValue(at: offset + 55),
+            pitStopShouldServePen: scanValue(at: offset + 57)
         )
     }
 
     func parseCarStatus(playerIndex: Int) -> CarStatusData {
-        let entrySize = 115
+        let entrySize = 55 // Correct size for F1 23/24
         let offset = 29 + (playerIndex * entrySize)
 
         return CarStatusData(
@@ -129,6 +132,69 @@ extension Data {
             ersHarvestedThisLapMGUH: scanValue(at: offset + 44),
             ersDeployedThisLap: scanValue(at: offset + 48),
             networkPaused: scanValue(at: offset + 52)
+        )
+    }
+
+    func parseParticipants(playerIndex: Int) -> ParticipantData {
+        let entrySize = 56
+        let offset = 30 + (playerIndex * entrySize)
+        
+        // Name is 48 bytes at offset + 7
+        let nameStart = offset + 7
+        let nameLength = 48
+        
+        var nameString = "Unknown"
+        if nameStart + nameLength <= self.count {
+            let nameBytes = self.subdata(in: nameStart..<nameStart+nameLength)
+            if let str = String(data: nameBytes, encoding: .utf8) {
+                nameString = str.trimmingCharacters(in: .controlCharacters).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        return ParticipantData(
+            aiControlled: scanValue(at: offset),
+            driverId: scanValue(at: offset + 1),
+            networkId: scanValue(at: offset + 2),
+            teamId: scanValue(at: offset + 3),
+            myTeam: scanValue(at: offset + 4),
+            raceNumber: scanValue(at: offset + 5),
+            nationality: scanValue(at: offset + 6),
+            name: nameString,
+            yourTelemetry: scanValue(at: offset + 55),
+            showOnlineNames: 1,
+            platform: 1
+        )
+    }
+
+    func parseSessionData() -> SessionData {
+        // Header is 29 bytes
+        // weather (29), trackTemp (30), airTemp (31), totalLaps (32)
+        // ... see F1 23/24 packet spec
+        
+        return SessionData(
+            totalLaps: scanValue(at: 32),
+            sessionType: scanValue(at: 34),
+            trackId: scanValue(at: 35),
+            formula: scanValue(at: 36),
+            sessionTimeLeft: scanValue(at: 37),
+            sessionDuration: scanValue(at: 39),
+            pitSpeedLimit: scanValue(at: 41),
+            gamePaused: scanValue(at: 42),
+            isSpectating: scanValue(at: 43),
+            spectatorCarIndex: scanValue(at: 44),
+            sliProNativeSupport: scanValue(at: 45),
+            numMarshalZones: scanValue(at: 46),
+            safetyCarStatus: scanValue(at: 200), // Approximate offset, simplified
+            networkGame: scanValue(at: 201),
+            numWeatherForecastSamples: scanValue(at: 202),
+            forecastAccuracy: scanValue(at: 250), // Simplified
+            aiDifficulty: scanValue(at: 251),
+            seasonLinkIdentifier: scanValue(at: 252),
+            weekendLinkIdentifier: scanValue(at: 256),
+            sessionMinutes: scanValue(at: 260),
+            trackTemperature: scanValue(at: 30),
+            airTemperature: scanValue(at: 31),
+            weather: scanValue(at: 29)
         )
     }
 }

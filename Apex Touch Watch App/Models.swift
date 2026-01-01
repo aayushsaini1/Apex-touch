@@ -34,6 +34,34 @@ enum PacketID: UInt8 {
     case motionEx = 13
 }
 
+struct SessionData {
+    let totalLaps: UInt8
+    let sessionType: UInt8
+    let trackId: Int8
+    let formula: UInt8
+    let sessionTimeLeft: UInt16
+    let sessionDuration: UInt16
+    let pitSpeedLimit: UInt8
+    let gamePaused: UInt8
+    let isSpectating: UInt8
+    let spectatorCarIndex: UInt8
+    let sliProNativeSupport: UInt8
+    let numMarshalZones: UInt8
+    // ... marshals zones parsing omitted for brevity
+    let safetyCarStatus: UInt8
+    let networkGame: UInt8
+    let numWeatherForecastSamples: UInt8
+    // ... weather samples omitted
+    let forecastAccuracy: UInt8
+    let aiDifficulty: UInt8
+    let seasonLinkIdentifier: UInt32
+    let weekendLinkIdentifier: UInt32
+    let sessionMinutes: UInt8
+    let trackTemperature: Int8
+    let airTemperature: Int8
+    let weather: UInt8
+}
+
 struct CarTelemetryData {
     let speed: UInt16
     let throttle: Float
@@ -54,8 +82,8 @@ struct CarTelemetryData {
 }
 
 struct LapData {
-    let lastLapTimeInMS: UInt32
-    let currentLapTimeInMS: UInt32
+    let lastLapTimeInMS: UInt64
+    let currentLapTimeInMS: UInt64
     let sector1TimeInMS: UInt16
     let sector2TimeInMS: UInt16
     let deltaToCarInFrontInMS: UInt16
@@ -107,4 +135,18 @@ struct CarStatusData {
     let ersHarvestedThisLapMGUH: Float
     let ersDeployedThisLap: Float
     let networkPaused: UInt8
+}
+
+struct ParticipantData {
+    let aiControlled: UInt8
+    let driverId: UInt8
+    let networkId: UInt8
+    let teamId: UInt8
+    let myTeam: UInt8
+    let raceNumber: UInt8
+    let nationality: UInt8
+    let name: String
+    let yourTelemetry: UInt8
+    let showOnlineNames: UInt8
+    let platform: UInt8
 }

@@ -9,8 +9,12 @@ class TelemetryViewModel: ObservableObject {
     @Published var position: UInt8 = 0
     @Published var currentLap: UInt8 = 0
     @Published var lastLapTime: String = "0:00.000"
+    @Published var currentLapTime: String = "0:00.000"
     @Published var tyreCompound: String = "Unknown"
+    @Published var driverName: String = "FER"
     @Published var maxRPM: UInt16 = 12000 // Default for F1
+    @Published var totalLaps: UInt8 = 0
+    @Published var totalCars: UInt8 = 20 // Default
 
     @Published var isConnected = false
     @Published var packetsReceived = 0
@@ -59,12 +63,35 @@ class TelemetryViewModel: ObservableObject {
         case .carTelemetry:
             let telemetry = data.parseCarTelemetry(playerIndex: playerIndex)
             updateTelemetry(telemetry)
+        case .session:
+            let session = data.parseSessionData()
+            DispatchQueue.main.async {
+                self.totalLaps = session.totalLaps
+            }
         case .lapData:
             let lapData = data.parseLapData(playerIndex: playerIndex)
             updateLapData(lapData)
+        case .participants:
+            let participant = data.parseParticipants(playerIndex: playerIndex)
+            let numActiveCars = data.scanValue(at: 29) as UInt8 // From Header
+            DispatchQueue.main.async {
+                 if numActiveCars > 0 {
+                     self.totalCars = numActiveCars
+                 }
+                // Optional: Update driver name only if we need to
+            }
         case .carStatus:
             let status = data.parseCarStatus(playerIndex: playerIndex)
             updateCarStatus(status)
+        case .participants:
+            let participant = data.parseParticipants(playerIndex: playerIndex)
+            DispatchQueue.main.async {
+                if !participant.name.isEmpty {
+                    // Take first 3 letters, uppercased
+                    let shortName = participant.name.prefix(3).uppercased()
+                    self.driverName = String(shortName)
+                }
+            }
         default:
             break
         }
@@ -86,6 +113,7 @@ class TelemetryViewModel: ObservableObject {
             self.position = data.carPosition
             self.currentLap = data.currentLapNum
             self.lastLapTime = self.formatTime(data.lastLapTimeInMS)
+            self.currentLapTime = self.formatTime(data.currentLapTimeInMS)
         }
     }
 
@@ -98,25 +126,30 @@ class TelemetryViewModel: ObservableObject {
         }
     }
 
+    private func formatTime(_ ms: UInt64) -> String {
+        let totalSeconds = ms / 1000
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        let milliseconds = ms % 1000
+        return String(format: "%d:%02d.%03d", minutes, seconds, milliseconds)
+    }
+
     private func triggerHaptic(for gear: Int8) {
         // Gear 0 is Neutral, -1 is Reverse
         WKInterfaceDevice.current().play(.click)
     }
 
-    private func formatTime(_ ms: UInt32) -> String {
-        let totalSeconds = Double(ms) / 1000.0
-        let minutes = Int(totalSeconds / 60)
-        let seconds = totalSeconds.truncatingRemainder(dividingBy: 60)
-        return String(format: "%d:%06.3f", minutes, seconds)
-    }
-
     private func mapTyreCompound(_ visualId: UInt8) -> String {
+        // Log raw value for debugging
+        print("Tyre Visual ID: \(visualId)")
+        
         switch visualId {
-        case 16: return "S"  // Soft
-        case 17: return "M"  // Medium
-        case 18: return "H"  // Hard
-        case 8: return "W"  // Wet
-        default: return "U"  // Unknown
+        case 16, 0: return "S" // Soft
+        case 17, 1: return "M" // Medium
+        case 18, 2: return "H" // Hard
+        case 7, 3:  return "I" // Inter
+        case 8, 4:  return "W" // Wet
+        default: return "U" // Unknown
         }
     }
     
