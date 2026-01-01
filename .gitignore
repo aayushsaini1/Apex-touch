@@ -1,0 +1,41 @@
+# Xcode
+#
+# gitignore contributors: checkout the Python file at the bottom for ways to maintain this files.
+
+## Build results
+build/
+DerivedData/
+
+## Various settings
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+## Other
+*.bundle
+*.framework
+*.dylib
+*.deviceplugin
+*.xcworkspace/contents.xcworkspacedata
+
+## Log files
+*.log
+
+## Playgrounds
+*.moved-aside
+
+## Swift Package Manager
+.build/
+.swiftpm/
+
+## IDE - VSCode
+.vscode/
+
+## macOS
+.DS_Store
