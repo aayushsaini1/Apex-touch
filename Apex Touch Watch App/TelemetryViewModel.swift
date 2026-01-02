@@ -10,7 +10,7 @@ class TelemetryViewModel: ObservableObject {
     @Published var currentLap: UInt8 = 0
     @Published var lastLapTime: String = "0:00.000"
     @Published var currentLapTime: String = "0:00.000"
-    @Published var tyreCompound: String = "Unknown"
+    @Published var tyreCompound: String = "U"
     @Published var driverName: String = "FER"
     @Published var maxRPM: UInt16 = 12000 // Default for F1
     @Published var totalLaps: UInt8 = 0
