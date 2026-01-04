@@ -22,10 +22,16 @@ class TelemetryViewModel: ObservableObject {
     @Published var teamId: UInt8 = 255
     
     private var lastLapNum: UInt8 = 0
-    private var currentPitStatus: UInt8 = 0
+    @Published var currentPitStatus: UInt8 = 0
 
     @Published var isConnected = false
+    @Published var isInDemoMode = false
+    @Published var sessionEnded = false
     @Published var packetsReceived = 0
+    
+    private var demoTimer: Timer?
+    private var staticFluctuationTimer: Timer?
+    private var demoStartTime: Date?
     
     var teamColor: Color {
         switch teamId {
@@ -52,7 +58,15 @@ class TelemetryViewModel: ObservableObject {
         
         udpListener.$isListening
             .receive(on: DispatchQueue.main)
-            .assign(to: &$isConnected)
+            .sink { [weak self] isListening in
+                // Only update isConnected if we are NOT in demo mode
+                // If in demo mode, we want to stay connected regardless of UDP state
+                guard let self = self else { return }
+                if !self.isInDemoMode {
+                    self.isConnected = isListening
+                }
+            }
+            .store(in: &bag)
 
         udpListener.onDataReceived = { [weak self] data in
             self?.processData(data)
@@ -65,6 +79,18 @@ class TelemetryViewModel: ObservableObject {
 
     func stop() {
         udpListener.stop()
+        demoTimer?.invalidate()
+        demoTimer = nil
+        staticFluctuationTimer?.invalidate()
+        staticFluctuationTimer = nil
+        isInDemoMode = false
+        sessionEnded = false
+        resultStatus = 2 // Reset to Active
+        currentPitStatus = 0
+        safetyCarStatus = 0
+        gear = 0
+        speed = 0
+        rpm = 0
     }
 
     private func processData(_ data: Data) {
@@ -119,8 +145,18 @@ class TelemetryViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.resultStatus = 4 // Force DNF state
                 }
+            } else if event.eventCode == "CHQF" { // Chequered Flag
+                 DispatchQueue.main.async {
+                     self.sessionEnded = true
+                 }
             }
+        // PacketID 10 is Final Classification, can also be used as a trigger
         default:
+            if header.packetId == 10 { // Final Classification
+                 DispatchQueue.main.async {
+                     self.sessionEnded = true
+                 }
+            }
             break
         }
     }
@@ -206,6 +242,232 @@ class TelemetryViewModel: ObservableObject {
         }
     }
     
+    func startRaceDemo() {
+        stop() // Reset any active state
+        
+        // Order matters: Set Flag FIRST, then connect
+        isInDemoMode = true
+        isConnected = true
+        
+        teamId = 1 // Ferrari
+        currentLap = 1
+        totalLaps = 2
+        totalCars = 22
+        tyreCompound = "S"
+        maxRPM = 13500
+        demoStartTime = Date()
+        
+        demoTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateDemoState()
+        }
+    }
+    
+    // Static Demos
+    func startSafetyCarDemo() {
+        setupStaticDemo()
+        safetyCarStatus = 1
+        speed = 120
+        gear = 3
+        rpm = 5500
+        position = 4
+    }
+    
+    func startPitLaneDemo() {
+        setupStaticDemo()
+        currentPitStatus = 1
+        speed = 80
+        limitSpeedToPit()
+    }
+    
+    func startChequeredFlagDemo() {
+        setupStaticDemo()
+        sessionEnded = true
+        position = 1
+        speed = 310
+    }
+    
+    func startDNFDemo() {
+        setupStaticDemo()
+        resultStatus = 4 // DNF
+    }
+    
+    private func setupStaticDemo() {
+        stop()
+        isInDemoMode = true
+        isConnected = true
+        teamId = 1 // Ferrari
+        currentLap = 5
+        totalLaps = 50
+        totalCars = 20
+        tyreCompound = "M"
+        maxRPM = 13500
+        
+        // Start subtle fluctuation timer for realism
+        staticFluctuationTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            self?.applySubtleFluctuation()
+        }
+    }
+    
+    private func applySubtleFluctuation() {
+        // Add very small random fluctuation to RPM (±2-3%)
+        if rpm > 0 {
+            let baseRPM = Double(rpm)
+            let fluctuation = Double.random(in: -0.03...0.03) * baseRPM
+            rpm = UInt16(max(1000, baseRPM + fluctuation))
+            
+            // Update rev lights percentage accordingly
+            revLightsPercent = UInt8((Double(rpm) / Double(maxRPM)) * 100)
+        }
+    }
+    
+    private func limitSpeedToPit() {
+         // Helper to ensure gear logic handles 'IN PIT' text if needed
+         gear = 1 
+    }
+    
+    private func updateDemoState() {
+        guard let startTime = demoStartTime else { return }
+        let elapsed = Date().timeIntervalSince(startTime)
+        
+        DispatchQueue.main.async {
+            // End Demo after 120s
+            if elapsed >= 120 {
+                self.stop()
+                return
+            }
+            
+            
+            // Simulated Lap Timer Logic
+            // Reset when entering pits (Phase 4 starts at 70s)
+            if elapsed >= 70 && elapsed < 70.2 {
+                self.currentLapTime = "0:00.000"
+            } else if elapsed < 70 {
+                // Lap 1 Timer
+                let lapTimeMs = UInt32(elapsed * 1000)
+                self.currentLapTime = self.formatTime(lapTimeMs)
+            } else if elapsed >= 90 {
+                // Lap 2 Timer (Starts counting after pit exit at 90s)
+                let lapTimeMs = UInt32((elapsed - 90) * 1000)
+                self.currentLapTime = self.formatTime(lapTimeMs)
+            }
+
+            // Phase Logic
+            if elapsed < 30 {
+                // Phase 1: Acceleration (0-30s)
+                self.safetyCarStatus = 0
+                self.currentPitStatus = 0
+                let progress = elapsed / 30.0
+                self.speed = UInt16(min(330, elapsed * 15)) // Accelerate
+                
+                // Position logic
+                if elapsed < 10 { self.position = 10 }
+                else if elapsed < 15 { self.position = 9 }
+                else if elapsed < 20 { self.position = 8 }
+                else if elapsed < 25 { self.position = 7 }
+                else { self.position = 6 }
+                
+                self.updateSimulatedPhysics(speed: Double(self.speed))
+                
+            } else if elapsed < 50 {
+                // Phase 2: Safety Car (30-50s)
+                self.safetyCarStatus = 1
+                self.speed = 120
+                self.position = 5
+                self.updateSimulatedPhysics(speed: 120)
+                
+            } else if elapsed < 70 {
+                // Phase 3: Restart (50-70s)
+                self.safetyCarStatus = 0
+                let p = (elapsed - 50) / 20.0
+                self.speed = UInt16(120 + (190 * p))
+                self.position = 5
+                self.updateSimulatedPhysics(speed: Double(self.speed))
+                
+            } else if elapsed < 90 {
+                // Phase 4: Pit Window (70-90s)
+                self.currentPitStatus = 1
+                self.speed = 80
+                self.position = 9
+                self.updateSimulatedPhysics(speed: 80)
+                
+            } else if elapsed < 115 {
+                // Phase 5: Final Climb (90-115s)
+                self.currentPitStatus = 0
+                
+                // Demo Logic: Increment Lap on Pit Exit
+                if self.currentLap == 1 { self.currentLap = 2 }
+
+                let p = (elapsed - 90) / 25.0
+                self.speed = UInt16(80 + (260 * p))
+                
+                if elapsed < 95 { self.position = 7 }
+                else if elapsed < 100 { self.position = 4 }
+                else if elapsed < 105 { self.position = 2 }
+                else { 
+                    self.position = 1 
+                }
+                self.updateSimulatedPhysics(speed: Double(self.speed))
+                
+            } else {
+                // Phase 6: Session End (115-120s)
+                self.speed = 340
+                self.position = 1
+                self.sessionEnded = true // Trigger Chequered Flag UI
+                // self.updateSimulatedPhysics(speed: 340) // No need physics, UI replaced
+            }
+        }
+    }
+    
+    private func updateSimulatedPhysics(speed: Double) {
+        // Simple sawtooth RPM mapping based on speed thresholds (8 gears)
+        let thresholds: [Double] = [0, 40, 80, 120, 160, 210, 260, 310, 400]
+        var simulatedGear: Int8 = 1
+        for i in 0..<thresholds.count-1 {
+            if speed >= thresholds[i] && speed < thresholds[i+1] {
+                simulatedGear = Int8(i + 1)
+                break
+            }
+        }
+        
+        if self.gear != simulatedGear {
+            self.triggerHaptic(currentGear: self.gear, newGear: simulatedGear)
+            self.gear = simulatedGear
+        }
+        
+        // RPM mapping
+        let gearStart = thresholds[Int(simulatedGear-1)]
+        let gearEnd = thresholds[Int(simulatedGear)]
+        let gearRange = gearEnd - gearStart
+        let gearProgress = (speed - gearStart) / gearRange
+        
+        // RPM goes from 10k to 13.5k in each gear
+        var simulatedRPM = 10000 + (3500 * gearProgress)
+        
+        // Fluctuation/Noise for realism
+        if speed > 300 || simulatedRPM > 13000 {
+            // High speed/RPM: 5-10% variance
+            let noise = Double.random(in: -0.05...0.05) * simulatedRPM
+            simulatedRPM += noise
+        } else if speed < 150 {
+            // Safety car / low speed: 5-8% variance for more visible fluctuation
+            let noise = Double.random(in: -0.08...0.08) * simulatedRPM
+            simulatedRPM += noise
+        }
+        
+        self.rpm = UInt16(simulatedRPM)
+        
+        // Flash Purple logic: If > 95%, force it to range that triggers purple
+        var percent = (simulatedRPM / 13500.0)
+        
+        // If near redline (optimal shift), make it flash 100% occasionally
+        if percent > 0.95 {
+             // 50/50 chance to hit 100% (Purple) vs 95% (Red) to create "flash" effect
+             if Bool.random() { percent = 1.0 }
+        }
+        
+        self.revLightsPercent = UInt8(percent * 100)
+    }
+
     static func getIPAddress() -> String {
         var address: String?
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
