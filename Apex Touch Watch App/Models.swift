@@ -82,12 +82,16 @@ struct CarTelemetryData {
 }
 
 struct LapData {
-    let lastLapTimeInMS: UInt64
-    let currentLapTimeInMS: UInt64
-    let sector1TimeInMS: UInt16
-    let sector2TimeInMS: UInt16
-    let deltaToCarInFrontInMS: UInt16
-    let deltaToRaceLeaderInMS: UInt16
+    let lastLapTimeInMS: UInt32
+    let currentLapTimeInMS: UInt32
+    let sector1TimeMSPart: UInt16
+    let sector1TimeMinutesPart: UInt8
+    let sector2TimeMSPart: UInt16
+    let sector2TimeMinutesPart: UInt8
+    let deltaToCarInFrontMSPart: UInt16
+    let deltaToCarInFrontMinutesPart: UInt8
+    let deltaToRaceLeaderMSPart: UInt16
+    let deltaToRaceLeaderMinutesPart: UInt8
     let lapDistance: Float
     let totalDistance: Float
     let safetyCarDelta: Float
@@ -115,6 +119,8 @@ struct CarStatusData {
     let tractionControl: UInt8
     let antiLockBrakes: UInt8
     let fuelMix: UInt8
+    let frontBrakeBias: UInt8
+    let pitLimiterStatus: UInt8
     let fuelInTank: Float
     let fuelCapacity: Float
     let fuelRemainingLaps: Float
@@ -149,4 +155,9 @@ struct ParticipantData {
     let yourTelemetry: UInt8
     let showOnlineNames: UInt8
     let platform: UInt8
+}
+
+struct EventData {
+    let eventCode: String
+    let vehicleIdx: UInt8?
 }
