@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  Apex Touch Watch App
-//
-//  Created by Aayush Saini on 01/01/26.
-//
-
 import Foundation
 import SwiftUI
 
@@ -18,160 +11,190 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                if !viewModel.isConnected {
-                    setupView
-                } else {
+            setupView
+                .navigationDestination(isPresented: $viewModel.isConnected) {
                     telemetryView
+                        .navigationBarBackButtonHidden(false)
                 }
-            }
-            .background(backgroundColor.ignoresSafeArea())
         }
     }
 
     private var setupView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "f1.circle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.linearGradient(colors: [.red, .orange], startPoint: .top, endPoint: .bottom))
+        GeometryReader { geo in
+            let h = geo.size.height
             
-            VStack(spacing: 4) {
-                Text("APEX TOUCH")
-                    .font(.system(.headline, design: .monospaced))
-                    .fontWeight(.black)
+            VStack(spacing: h * 0.05) {
+                Spacer()
                 
-                Text(viewModel.ipAddress)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.secondary)
+                Image(systemName: "f1.circle.fill")
+                    .font(.system(size: h * 0.25))
+                    .foregroundStyle(.linearGradient(colors: [.red, .orange], startPoint: .top, endPoint: .bottom))
+                
+                VStack(spacing: h * 0.02) {
+                    Text("APEX TOUCH")
+                        .font(.orbitron(size: h * 0.1, weight: 900))
+                    
+                    Text(viewModel.ipAddress)
+                        .font(.system(size: h * 0.07, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                
+                Button {
+                    viewModel.start()
+                } label: {
+                    Text("START ENGINE")
+                        .font(.orbitron(size: h * 0.08, weight: 700))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.large)
+                
+                Spacer()
             }
-            
-            Button {
-                viewModel.start()
-            } label: {
-                Text("START ENGINE")
-                    .fontWeight(.bold)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .frame(maxWidth: .infinity)
         }
     }
 
     private var telemetryView: some View {
-        VStack(spacing: 0) {
-            // Top HUD
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("POS")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    Text("\(viewModel.position)")
-                        .font(.system(.body, design: .rounded))
-                        .fontWeight(.black)
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("LAP")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    Text("\(viewModel.currentLap)")
-                        .font(.system(.body, design: .rounded))
-                        .fontWeight(.black)
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            
+            ZStack {
+                // 1. DNF State Coverage
+                if viewModel.resultStatus >= 4 && viewModel.resultStatus <= 7 {
+                    RadialGradient(
+                        colors: [Color(white: 0.1), Color(white: 0.35)],
+                        center: .top,
+                        startRadius: 0,
+                        endRadius: h
+                    )
+                    .ignoresSafeArea()
+                    
+                    Text("DNF")
+                        .font(.orbitron(size: h * 0.25, weight: 900))
+                        .foregroundColor(.white)
+                } else {
+                    // 2. Active Session Backgrounds
+                    if viewModel.safetyCarStatus == 1 || viewModel.safetyCarStatus == 2 {
+                        Color.yellow.ignoresSafeArea()
+                    } else {
+                        RadialGradient(
+                            colors: [viewModel.teamColor, .black],
+                            center: .bottom,
+                            startRadius: 0,
+                            endRadius: h * 1.3
+                        )
+                        .ignoresSafeArea()
+                    }
+
+                    // 3. Telemetry Content
+                    let isSafetyCar = viewModel.safetyCarStatus == 1 || viewModel.safetyCarStatus == 2
+                    let contentColor: Color = isSafetyCar ? .black : .white
+                    let secondaryColor: Color = isSafetyCar ? .black.opacity(0.6) : .white.opacity(0.4)
+
+                    VStack(spacing: 0) {
+                        // MAIN CLUSTER
+                        ZStack {
+                            // RPM Arc
+                            ZStack {
+                                Circle()
+                                    .trim(from: 0.6, to: 0.9)
+                                    .stroke(contentColor.opacity(0.12), style: StrokeStyle(lineWidth: h * 0.08, lineCap: .round))
+                                
+                                let rpmPercent = Double(viewModel.revLightsPercent) / 90.0
+                                Circle()
+                                    .trim(from: 0.6, to: 0.6 + (0.3 * CGFloat(min(max(rpmPercent, 0), 1.0))))
+                                    .stroke(
+                                        rpmPercent >= 1.0 ? AnyShapeStyle(Color.purple) : AnyShapeStyle(AngularGradient(
+                                            colors: [.green, .yellow, .orange, .red, Color(red: 0.8, green: 0, blue: 0.8), .purple],
+                                            center: .center,
+                                            startAngle: .degrees(216),
+                                            endAngle: .degrees(360)
+                                        )),
+                                        style: StrokeStyle(lineWidth: h * 0.08, lineCap: .round)
+                                    )
+                                    .animation(.linear(duration: 0.1), value: rpmPercent)
+                            }
+                            .frame(width: w * 0.9, height: w * 0.9)
+                            .offset(y: h * 0.3)
+                            
+                            // Gear & Speed
+                            VStack(spacing: -h * 0.01) {
+                                Text(viewModel.gear == 0 ? "N" : viewModel.gear == -1 ? "R" : "\(viewModel.gear)")
+                                    .font(.orbitron(size: h * 0.4, weight: 900))
+                                    .foregroundStyle(contentColor)
+                                
+                                HStack(alignment: .firstTextBaseline, spacing: w * 0.02) {
+                                    Text("\(viewModel.speed)")
+                                        .font(.orbitron(size: h * 0.14, weight: 700))
+                                        .foregroundStyle(contentColor)
+                                    Text("KPH")
+                                        .font(.orbitron(size: h * 0.12, weight: 700))
+                                        .foregroundColor(secondaryColor)
+                                }
+                            }
+                            .offset(y: h * 0.05)
+                        }
+                        .frame(height: h * 0.45)
+                        
+                        Spacer(minLength: 0)
+
+                        // BOTTOM DATA GRID
+                        VStack(spacing: h * 0.02) {
+                            HStack(alignment: .center) {
+                                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                    Text("P")
+                                        .font(.orbitron(size: h * 0.11, weight: 700))
+                                        .foregroundColor(contentColor)
+                                    Text("\(viewModel.position)")
+                                        .font(.orbitron(size: h * 0.11, weight: 900))
+                                        .foregroundColor(contentColor)
+                                    Text("/\(viewModel.totalCars)")
+                                        .font(.orbitron(size: h * 0.11, weight: 400))
+                                        .foregroundColor(secondaryColor)
+                                }
+                                
+                                Spacer()
+                                
+                                Image("tyre_\(viewModel.tyreCompound)")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: h * 0.24, height: h * 0.24)
+                            }
+                            .padding(.horizontal, w * 0.1)
+
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(viewModel.currentLapTime)
+                                    .font(.orbitron(size: h * 0.09, weight: 700))
+                                    .foregroundColor(contentColor)
+                                
+                                Spacer()
+                                
+                                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                                    Text("LAP")
+                                        .font(.orbitron(size: h * 0.09, weight: 400))
+                                        .foregroundColor(secondaryColor)
+                                    Text("\(viewModel.currentLap)")
+                                        .font(.orbitron(size: h * 0.09, weight: 900))
+                                        .foregroundColor(contentColor)
+                                    Text("/\(viewModel.totalLaps)")
+                                        .font(.orbitron(size: h * 0.09, weight: 400))
+                                        .foregroundColor(secondaryColor)
+                                }
+                            }
+                            .padding(.horizontal, w * 0.1)
+                        }
+                        .padding(.bottom, -h * 0.1)
+                    }
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 4)
-
-            Spacer()
-
-            // Gear and Speed
-            VStack(spacing: -10) {
-                Text(viewModel.gear == 0 ? "N" : viewModel.gear == -1 ? "R" : "\(viewModel.gear)")
-                    .font(.system(size: 90, weight: .black, design: .rounded))
-                    .italic()
-                
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(viewModel.speed)")
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    Text("KM/H")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Bottom Info
-            HStack {
-                Text(viewModel.tyreCompound)
-                    .font(.system(size: 14, weight: .black))
-                    .padding(6)
-                    .background(Circle().stroke(tyreColor, lineWidth: 2))
-                
-                Spacer()
-                
-                Text(viewModel.lastLapTime)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(4)
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
         }
-        .overlay(alignment: .top) {
-             revBar
-        }
-        .onLongPressGesture {
+        .onDisappear {
             viewModel.stop()
         }
     }
-
-    private var revBar: some View {
-        GeometryReader { geo in
-            let rpmPercent = Double(viewModel.rpm) / Double(viewModel.maxRPM)
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                Rectangle()
-                    .fill(backgroundColor)
-                    .frame(width: geo.size.width * CGFloat(min(rpmPercent, 1.0)))
-            }
-        }
-        .frame(height: 4)
-    }
-
-    private var backgroundColor: Color {
-        guard viewModel.isConnected else { return Color.black }
-        
-        let rpmPercent = Double(viewModel.rpm) / Double(viewModel.maxRPM)
-        
-        if rpmPercent > 0.98 {
-            return Color.purple
-        } else if rpmPercent > 0.90 {
-            return Color.red
-        } else if rpmPercent > 0.82 {
-            return Color.orange
-        } else if rpmPercent > 0.70 {
-            return Color.green
-        } else {
-            return Color.black
-        }
-    }
-
-    private var tyreColor: Color {
-        switch viewModel.tyreCompound {
-        case "S": return .red
-        case "M": return .yellow
-        case "H": return .white
-        case "I": return .green
-        case "W": return .blue
-        default: return .gray
-        }
-    }
 }
-
 
 #Preview {
     ContentView()

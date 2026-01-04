@@ -69,7 +69,8 @@ class UDPListener: ObservableObject {
     }
 
     private func receiveMessage() {
-        connection?.receiveMessage { [weak self] (content, context, isComplete, error) in
+        // Use receive instead of receiveMessage to handle fragmented UDP packets up to 64KB
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 65535) { [weak self] (content, context, isComplete, error) in
             if let data = content {
                 self?.onDataReceived?(data)
             }
