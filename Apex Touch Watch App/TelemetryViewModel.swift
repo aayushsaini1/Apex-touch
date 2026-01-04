@@ -13,6 +13,7 @@ class TelemetryViewModel: ObservableObject {
     @Published var tyreCompound: String = "U"
     @Published var driverName: String = "FER"
     @Published var maxRPM: UInt16 = 12000 // Default for F1
+    @Published var revLightsPercent: UInt8 = 0
     @Published var totalLaps: UInt8 = 0
     @Published var totalCars: UInt8 = 20 // Default
 
@@ -103,6 +104,7 @@ class TelemetryViewModel: ObservableObject {
                 self.triggerHaptic(for: data.gear)
             }
             self.rpm = data.engineRPM
+            self.revLightsPercent = data.revLightsPercent
             self.gear = data.gear
             self.speed = data.speed
         }

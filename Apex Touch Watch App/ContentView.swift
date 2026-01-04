@@ -95,26 +95,26 @@ struct ContentView: View {
                                 .rotationEffect(.degrees(0))
                             
                             // Active Arc
-                            let rpmPercent = Double(viewModel.rpm) / Double(max(1, viewModel.maxRPM))
+                            let rpmPercent = Double(viewModel.revLightsPercent) / 90.0
                             Circle()
                                 .trim(from: 0.6, to: 0.6 + (0.3 * CGFloat(min(max(rpmPercent, 0), 1.0))))
                                 .stroke(
-                                    AngularGradient(
+                                    rpmPercent >= 1.0 ? AnyShapeStyle(Color.purple) : AnyShapeStyle(AngularGradient(
                                         colors: [.green, .yellow, .orange, .red, Color(red: 0.8, green: 0, blue: 0.8), .purple],
                                         center: .center,
-                                        startAngle: .degrees(180),
+                                        startAngle: .degrees(216), // 0.6 * 360
                                         endAngle: .degrees(360)
-                                    ),
+                                    )),
                                     style: StrokeStyle(lineWidth: h * 0.08, lineCap: .round)
                                 )
                                 .rotationEffect(.degrees(0))
                                 .animation(.linear(duration: 0.1), value: rpmPercent)
                         }
                         .frame(width: w * 0.9, height: w * 0.9)
-                        .offset(y: h * 0.3) // Push down to frame the top edge nicely
+                        .offset(y: h * 0.3) // Pull arc up to hug the top
                         
                         // 2. Central Gear & Speed - Centered in the top half
-                        VStack(spacing: -h * 0.08) {
+                        VStack(spacing: -h * 0.01) {
                             Text(viewModel.gear == 0 ? "N" : viewModel.gear == -1 ? "R" : "\(viewModel.gear)")
                                 .font(.orbitron(size: h * 0.4, weight: 900))
                                 .foregroundStyle(.white)
@@ -128,9 +128,9 @@ struct ContentView: View {
                                     .foregroundColor(.white.opacity(0.4))
                             }
                         }
-                        .offset(y: h * 0.08) // Align with the arc's center
+                        .offset(y: h * 0.05) // Move up slightly
                     }
-                    .frame(height: h * 0.55) // Occupy clear top space
+                    .frame(height: h * 0.45) // Reduced height to prevent crowding
                     
                     Spacer(minLength: 0)
 
