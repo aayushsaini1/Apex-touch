@@ -3,7 +3,7 @@ import Foundation
 import WatchKit
 import SwiftUI
 
-class TelemetryViewModel: ObservableObject {
+class TelemetryViewModel: NSObject, ObservableObject, WKExtendedRuntimeSessionDelegate {
     @Published var rpm: UInt16 = 0
     @Published var gear: Int8 = 0
     @Published var speed: UInt16 = 0
@@ -33,6 +33,8 @@ class TelemetryViewModel: ObservableObject {
     private var staticFluctuationTimer: Timer?
     private var demoStartTime: Date?
     
+    private var extendedSession: WKExtendedRuntimeSession?
+    
     var teamColor: Color {
         switch teamId {
         case 0: return Color(red: 0.0, green: 0.63, blue: 0.61) // Mercedes (Teal)
@@ -53,7 +55,8 @@ class TelemetryViewModel: ObservableObject {
     private let udpListener = UDPListener()
     private var bag = Set<AnyCancellable>()
 
-    init() {
+    override init() {
+        super.init()
         self.ipAddress = TelemetryViewModel.getIPAddress()
         
         udpListener.$isListening
@@ -74,10 +77,12 @@ class TelemetryViewModel: ObservableObject {
     }
 
     func start() {
+        startExtendedSession()
         udpListener.start(port: 20777)
     }
 
     func stop() {
+        stopExtendedSession()
         udpListener.stop()
         demoTimer?.invalidate()
         demoTimer = nil
@@ -218,14 +223,8 @@ class TelemetryViewModel: ObservableObject {
     }
 
     private func triggerHaptic(currentGear: Int8, newGear: Int8) {
-        // Very subtle directional haptics
-        if newGear > currentGear {
-            // Upshift: Subtle rising feel
-            WKInterfaceDevice.current().play(.directionUp)
-        } else if newGear < currentGear {
-            // Downshift: Subtle falling feel
-            WKInterfaceDevice.current().play(.directionDown)
-        }
+        // Use custom HapticManager for silent gear shifts
+        HapticManager.shared.triggerGearShift(isUpshift: newGear > currentGear)
     }
 
     private func mapTyreCompound(_ visualId: UInt8) -> String {
@@ -244,6 +243,7 @@ class TelemetryViewModel: ObservableObject {
     
     func startRaceDemo() {
         stop() // Reset any active state
+        startExtendedSession()
         
         // Order matters: Set Flag FIRST, then connect
         isInDemoMode = true
@@ -293,6 +293,7 @@ class TelemetryViewModel: ObservableObject {
     
     private func setupStaticDemo() {
         stop()
+        startExtendedSession()
         isInDemoMode = true
         isConnected = true
         teamId = 1 // Ferrari
@@ -489,5 +490,46 @@ class TelemetryViewModel: ObservableObject {
             freeifaddrs(ifaddr)
         }
         return address ?? "No Wi-Fi"
+    }
+
+    // MARK: - WKExtendedRuntimeSession Management
+
+    private func startExtendedSession() {
+        guard extendedSession == nil else { return }
+        
+        // .smartHome is a good fit for monitoring external telemetry data
+        extendedSession = WKExtendedRuntimeSession()
+        extendedSession?.delegate = self
+        extendedSession?.start()
+        print("Extended Runtime Session Started")
+    }
+
+    private func stopExtendedSession() {
+        extendedSession?.invalidate()
+        extendedSession = nil
+        print("Extended Runtime Session Stopped")
+    }
+
+    // MARK: - WKExtendedRuntimeSessionDelegate
+
+    func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        print("Extended runtime session did start")
+    }
+
+    func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        print("Extended runtime session will expire")
+        // Optionally restart the session if still connected
+        if isConnected || isInDemoMode {
+            stopExtendedSession()
+            startExtendedSession()
+        }
+    }
+
+    func extendedRuntimeSession(_ extendedRuntimeSession: WKExtendedRuntimeSession, didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason, error: Error?) {
+        print("Extended runtime session invalidated: \(reason.rawValue)")
+        if let error = error {
+            print("Session error: \(error.localizedDescription)")
+        }
+        extendedSession = nil
     }
 }
